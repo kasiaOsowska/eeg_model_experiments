@@ -1,0 +1,130 @@
+import numpy as np
+from keras.src.metrics.metrics_utils import confusion_matrix
+from sklearn.metrics import classification_report
+from sklearn.preprocessing import LabelEncoder
+
+from tools import get_data
+from tensorflow import keras
+from tensorflow.keras import layers
+import matplotlib.pyplot as plt
+
+
+train_epochs, y_train, test_epochs, y_test, valid_epochs, y_valid = get_data(resample = False, segment_length = 1.0,
+                                                                             step = 0.2)
+
+
+def get_freq(epochs, fmin=1, fmax=40.):
+    psd = epochs.compute_psd(fmin=fmin, fmax=fmax)
+    X = psd.get_data()
+    freqs = psd.freqs
+
+    print("X shape:", X.shape)
+    print("freqs shape:", freqs.shape)
+
+    return X, freqs
+
+X_train, freqs = get_freq(train_epochs)
+
+X_valid, _ = get_freq(valid_epochs)
+X_test, _ = get_freq(test_epochs)
+
+
+le = LabelEncoder()
+y_train_dl = le.fit_transform(y_train)
+y_valid_dl = le.transform(y_valid)
+y_test_dl  = le.transform(y_test)
+
+n_classes = len(np.unique(y_train_dl))
+
+X_train_dl = np.transpose(X_train, (0, 2, 1))
+X_valid_dl = np.transpose(X_valid, (0, 2, 1))
+X_test_dl  = np.transpose(X_test,  (0, 2, 1))
+
+mean = X_train_dl.mean(axis=(0, 1), keepdims=True)
+std  = X_train_dl.std(axis=(0, 1), keepdims=True) + 1e-8
+
+
+X_train_dl = (X_train_dl - mean) / std
+X_valid_dl = (X_valid_dl - mean) / std
+X_test_dl  = (X_test_dl  - mean) / std
+
+T = X_train_dl.shape[1]
+C = X_train_dl.shape[2]
+
+inputs = keras.Input(shape=(T, C))
+
+x = layers.Conv1D(16, kernel_size=2, padding='same', activation='relu')(inputs)
+x = layers.BatchNormalization()(x)
+x = layers.MaxPooling1D(pool_size=2)(x)
+x = layers.Dropout(0.3)(x)
+
+x = layers.Conv1D(32, kernel_size=2, padding='same', activation='relu')(x)
+x = layers.MaxPooling1D(pool_size=2)(x)
+x = layers.Dropout(0.3)(x)
+
+x = layers.Conv1D(64, kernel_size=3, padding='same', activation='relu')(x)
+x = layers.MaxPooling1D(pool_size=2)(x)
+x = layers.Dropout(0.4)(x)
+
+x = layers.Conv1D(128, kernel_size=3, padding='same', activation='relu')(x)
+x = layers.MaxPooling1D(pool_size=2)(x)
+x = layers.Dropout(0.4)(x)
+
+x = layers.GlobalAveragePooling1D()(x)
+x = layers.Dropout(0.1)(x)
+
+outputs = layers.Dense(n_classes, activation='softmax')(x)
+
+model = keras.Model(inputs=inputs, outputs=outputs)
+
+
+model.compile(
+    optimizer=keras.optimizers.Adam(1e-3),
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+model.summary()
+
+callbacks = [
+    keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=10,
+        restore_best_weights=True
+    )
+]
+
+
+history = model.fit(
+    X_train_dl, y_train_dl,
+    validation_data=(X_valid_dl, y_valid_dl),
+    epochs=120,
+    batch_size=16,
+    shuffle=True,
+    callbacks = callbacks
+)
+
+test_loss, test_acc = model.evaluate(X_test_dl, y_test_dl)
+print("Test loss:", test_loss)
+print("Test acc:", test_acc)
+
+y_pred_proba = model.predict(X_test_dl)
+y_pred = np.argmax(y_pred_proba, axis=1)
+
+print(confusion_matrix(y_test_dl, y_pred, num_classes=n_classes))
+print(classification_report(y_test_dl, y_pred))
+
+plt.figure(figsize=(12, 4))
+plt.subplot(1, 2, 1)
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Val Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.subplot(1, 2, 2)
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Val Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()

@@ -2,16 +2,18 @@ from sklearn.metrics import f1_score
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import GridSearchCV
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 from mne.decoding import Vectorizer
 from sklearn.svm import SVC
+from pyriemann.estimation import Covariances
+from pyriemann.tangentspace import TangentSpace
 
 from tools import get_data
 
 
 train_epochs, y_train, test_epochs, y_test = get_data(validation = False, resample=True,
-                                                      segment_length = 1.0, step = 0.2)
+                                                      segment_length = 2.0, step = 1.0)
 
 X_train = train_epochs.get_data()
 X_test = test_epochs.get_data()
@@ -19,6 +21,12 @@ X_test = test_epochs.get_data()
 print(X_train.shape)
 print(X_test.shape)
 
+clf = make_pipeline(Covariances("oas"), TangentSpace(metric="riemann"), SVC(kernel="linear", probability=True))
+
+clf.fit(X_train, y_train)
+y_pred = clf.predict(X_test)
+f1 = f1_score(y_test, y_pred, average='weighted')
+print("Covariances + Tangent Space + SVM F1 weighted:", f1)
 
 clf = Pipeline([
     ('vectorizer', Vectorizer()),
@@ -29,7 +37,6 @@ clf.fit(X_train, y_train)
 y_pred = clf.predict(X_test)
 f1 = f1_score(y_test, y_pred, average='weighted')
 print("Initial SVM F1 weighted:", f1)
-print(f1)
 
 svm = SVC(kernel = 'rbf', class_weight='balanced', gamma = "scale",
           decision_function_shape='ovo', shrinking=True)

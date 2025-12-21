@@ -128,7 +128,7 @@ def get_data(validation = True, resample = False, segment_length = 2.0, step = 0
         reject=reject_criteria
     )
 
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=0.1, random_state=42)
+    sss = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
     train_idx, rest_idx = next(sss.split(np.zeros(len(epochs.events[:, -1])), epochs.events[:, -1]))
 
     train_epochs = epochs[train_idx]

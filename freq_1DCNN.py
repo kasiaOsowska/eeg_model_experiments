@@ -6,14 +6,15 @@ from sklearn.preprocessing import LabelEncoder
 from tools import get_data
 from tensorflow import keras
 from tensorflow.keras import layers
+from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 
 
-train_epochs, y_train, test_epochs, y_test, valid_epochs, y_valid = get_data(resample = False, segment_length = 1.0,
-                                                                             step = 0.2)
+train_epochs, y_train, test_epochs, y_test, valid_epochs, y_valid = get_data(resample = False, segment_length = 2.0,
+                                                                             step = 1.0)
 
 
-def get_freq(epochs, fmin=1, fmax=40.):
+def get_freq(epochs, fmin=8., fmax=38.):
     psd = epochs.compute_psd(fmin=fmin, fmax=fmax)
     X = psd.get_data()
     freqs = psd.freqs
@@ -40,13 +41,14 @@ X_train_dl = np.transpose(X_train, (0, 2, 1))
 X_valid_dl = np.transpose(X_valid, (0, 2, 1))
 X_test_dl  = np.transpose(X_test,  (0, 2, 1))
 
-mean = X_train_dl.mean(axis=(0, 1), keepdims=True)
-std  = X_train_dl.std(axis=(0, 1), keepdims=True) + 1e-8
+mean = X_train_dl.mean(axis=0, keepdims=True)          # (1, F, Ch)
+std  = X_train_dl.std(axis=0, keepdims=True) + 1e-8    # (1, F, Ch)
 
 
 X_train_dl = (X_train_dl - mean) / std
 X_valid_dl = (X_valid_dl - mean) / std
 X_test_dl  = (X_test_dl  - mean) / std
+
 
 T = X_train_dl.shape[1]
 C = X_train_dl.shape[2]
@@ -56,19 +58,20 @@ inputs = keras.Input(shape=(T, C))
 x = layers.Conv1D(16, kernel_size=2, padding='same', activation='relu')(inputs)
 x = layers.BatchNormalization()(x)
 x = layers.MaxPooling1D(pool_size=2)(x)
-x = layers.Dropout(0.3)(x)
+x = layers.Dropout(0.2)(x)
 
 x = layers.Conv1D(32, kernel_size=2, padding='same', activation='relu')(x)
 x = layers.MaxPooling1D(pool_size=2)(x)
-x = layers.Dropout(0.3)(x)
+x = layers.Dropout(0.2)(x)
 
 x = layers.Conv1D(64, kernel_size=3, padding='same', activation='relu')(x)
 x = layers.MaxPooling1D(pool_size=2)(x)
-x = layers.Dropout(0.4)(x)
+x = layers.Dropout(0.2)(x)
 
 x = layers.Conv1D(128, kernel_size=3, padding='same', activation='relu')(x)
 x = layers.MaxPooling1D(pool_size=2)(x)
-x = layers.Dropout(0.4)(x)
+x = layers.Dropout(0.2)(x)
+
 
 x = layers.GlobalAveragePooling1D()(x)
 x = layers.Dropout(0.1)(x)
@@ -79,7 +82,7 @@ model = keras.Model(inputs=inputs, outputs=outputs)
 
 
 model.compile(
-    optimizer=keras.optimizers.Adam(1e-3),
+    optimizer=keras.optimizers.Adam(5e-4),
     loss='sparse_categorical_crossentropy',
     metrics=['accuracy']
 )
@@ -87,10 +90,11 @@ model.compile(
 model.summary()
 
 callbacks = [
+    keras.callbacks.ReduceLROnPlateau(
+        monitor="val_loss", factor=0.5, patience=8, min_lr=1e-6, verbose=1
+    ),
     keras.callbacks.EarlyStopping(
-        monitor='val_loss',
-        patience=10,
-        restore_best_weights=True
+        monitor="val_loss", patience=50, restore_best_weights=True
     )
 ]
 
@@ -98,8 +102,8 @@ callbacks = [
 history = model.fit(
     X_train_dl, y_train_dl,
     validation_data=(X_valid_dl, y_valid_dl),
-    epochs=120,
-    batch_size=16,
+    epochs=200,
+    batch_size=64,
     shuffle=True,
     callbacks = callbacks
 )

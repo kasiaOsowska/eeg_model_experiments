@@ -82,7 +82,7 @@ model = keras.Model(inputs=inputs, outputs=outputs)
 
 
 model.compile(
-    optimizer=keras.optimizers.Adam(5e-4),
+    optimizer=keras.optimizers.Adam(3e-4),
     loss='sparse_categorical_crossentropy',
     metrics=['accuracy']
 )
@@ -91,7 +91,7 @@ model.summary()
 
 callbacks = [
     keras.callbacks.ReduceLROnPlateau(
-        monitor="val_loss", factor=0.5, patience=8, min_lr=1e-6, verbose=1
+        monitor="val_loss", factor=0.8, patience=20, min_lr=1e-6, verbose=1
     ),
     keras.callbacks.EarlyStopping(
         monitor="val_loss", patience=50, restore_best_weights=True
@@ -102,7 +102,7 @@ callbacks = [
 history = model.fit(
     X_train_dl, y_train_dl,
     validation_data=(X_valid_dl, y_valid_dl),
-    epochs=200,
+    epochs=400,
     batch_size=64,
     shuffle=True,
     callbacks = callbacks
